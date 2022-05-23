@@ -42,33 +42,38 @@ async function run() {
 
     const bookingCollection = client.db("doctors_portal").collection("booking");
     const userCollection = client.db("doctors_portal").collection("user");
+    const doctorCollection = client.db("doctors_portal").collection("doctors");
 
-    // check role
-    // app.get("/admin/:email", async (req, res) => {
-    //   const email = req.params.email;
-    //   const user = await userCollection.findOne({ email: email });
-    //   const isAdmin = user.role === "admin";
-    //   res.send({ admin: isAdmin });
-    // });
-
-    //make a person admin
-    app.put("/user/admin/:email", verifyJWT, async (req, res) => {
-      const email = req.params.email;
+    const verifyAdmin = async (req, res, next) => {
       const requester = req.decoded.email;
       const requesterAccount = await userCollection.findOne({
         email: requester,
       });
       if (requesterAccount.role === "admin") {
-        const filter = { email: email };
-        const updateDoc = {
-          $set: { role: "admin" },
-        };
-        const result = await userCollection.updateOne(filter, updateDoc);
-
-        res.send(result);
+        next();
       } else {
         res.status(403).send({ message: "forbidden" });
       }
+    };
+
+    // check role to see the all user route in frontend
+    app.get("/admin/:email", async (req, res) => {
+      const email = req.params.email;
+      const user = await userCollection.findOne({ email: email });
+      const isAdmin = user.role === "admin";
+      res.send({ admin: isAdmin });
+    });
+    // check role to see the all user route in frontend end
+
+    //make a person admin
+    app.put("/user/admin/:email", verifyJWT, verifyAdmin, async (req, res) => {
+      const email = req.params.email;
+      const filter = { email: email };
+      const updateDoc = {
+        $set: { role: "admin" },
+      };
+      const result = await userCollection.updateOne(filter, updateDoc);
+      res.send(result);
     });
 
     //users login and register
@@ -97,15 +102,18 @@ async function run() {
       res.send(user);
     });
 
-    //get services
+    //get services - uses in add new doctor dropdown
     app.get("/services", async (req, res) => {
       const query = {};
-      const servicesCursor = await serviceCollection.find(query);
+      const servicesCursor = await serviceCollection
+        .find(query)
+        .project({ name: 1 });
       const services = await servicesCursor.toArray();
       // console.log(services);
       res.send(services);
     });
 
+    //available services
     app.get("/available", async (req, res) => {
       const date = req.query.date || "May 15, 2022";
       // console.log(date);
@@ -158,6 +166,19 @@ async function run() {
       }
       const result = await bookingCollection.insertOne(booking);
       res.send({ success: true, result });
+    });
+
+    //add a new doctor
+    app.post("/doctor", verifyJWT, verifyAdmin, async (req, res) => {
+      const doctor = req.body;
+      const result = await doctorCollection.insertOne(doctor);
+      res.send(result);
+    });
+
+    //get all doctors
+    app.get("/doctor", verifyJWT, verifyAdmin, async (req, res) => {
+      const doctors = await doctorCollection.find().toArray();
+      res.send(doctors);
     });
   } finally {
   }
